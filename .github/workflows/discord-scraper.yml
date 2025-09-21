@@ -31,7 +31,7 @@ jobs:
       run: python discord_scraper.py
       
     - name: Upload results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4  # Updated from v3 to v4
       with:
         name: discord-messages
         path: discord_messages.json
