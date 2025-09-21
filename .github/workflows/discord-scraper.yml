@@ -1,0 +1,37 @@
+name: Discord Scraper
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'  # Run every 30 minutes
+  workflow_dispatch:  # Allow manual triggers
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Install dependencies
+      run: pip install aiohttp python-dotenv
+      
+    - name: Create .env file from secrets
+      run: |
+        echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" >> .env
+        echo "CHANNEL_URLS=${{ secrets.CHANNEL_URLS }}" >> .env
+        echo "MAX_MESSAGES=500" >> .env
+      
+    - name: Run scraper
+      run: python discord_scraper.py
+      
+    - name: Upload results
+      uses: actions/upload-artifact@v3
+      with:
+        name: discord-messages
+        path: discord_messages.json
