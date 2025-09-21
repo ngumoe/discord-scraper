@@ -31,7 +31,15 @@ jobs:
       run: python discord_scraper.py
       
     - name: Upload results
-      uses: actions/upload-artifact@v4  # Updated from v3 to v4
+      uses: actions/upload-artifact@v4
       with:
         name: discord-messages
         path: discord_messages.json
+        
+    - name: Send results to n8n webhook
+      run: |
+        # Read the JSON file and send to n8n webhook
+        curl -X POST \
+          -H "Content-Type: application/json" \
+          -d @"discord_messages.json" \
+          "${{ secrets.N8N_WEBHOOK_URL }}"
