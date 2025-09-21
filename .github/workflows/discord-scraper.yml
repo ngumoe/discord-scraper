@@ -35,11 +35,4 @@ jobs:
       with:
         name: discord-messages
         path: discord_messages.json
-        
-    - name: Send results to n8n webhook
-      run: |
-        # Read the JSON file and send to n8n webhook
-        curl -X POST \
-          -H "Content-Type: application/json" \
-          -d @"discord_messages.json" \
-          "${{ secrets.N8N_WEBHOOK_URL }}"
+        retention-days: 7  # Keep artifacts for 7 days
