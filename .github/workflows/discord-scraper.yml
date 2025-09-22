@@ -2,8 +2,8 @@ name: Discord Scraper
 
 on:
   schedule:
-    - cron: '*/30 * * * *'  # Run every 30 minutes
-  workflow_dispatch:  # Allow manual triggers
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
 
 jobs:
   scrape:
@@ -21,15 +21,23 @@ jobs:
     - name: Install dependencies
       run: pip install aiohttp python-dotenv gspread google-auth
       
-    - name: Create .env file from secrets
+    - name: Create configuration files
       run: |
-        echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" > .env
-        echo "CHANNEL_URLS=${{ secrets.CHANNEL_URLS }}" >> .env
-        echo "MAX_MESSAGES=500" >> .env
-        echo "GOOGLE_SHEET_ID=${{ secrets.GOOGLE_SHEET_ID }}" >> .env
-        # Create a separate file for Google credentials (not in .env)
+        # Create google_credentials.json from secret
         echo '${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}' > google_credentials.json
-        cat google_credentials.json | head -c 100  # Debug: show first 100 chars
+        
+        # Create a simple config.py file instead of .env
+        cat > config.py << EOF
+        DISCORD_TOKEN = "${{ secrets.DISCORD_TOKEN }}"
+        CHANNEL_URLS = "${{ secrets.CHANNEL_URLS }}"
+        MAX_MESSAGES = 500
+        GOOGLE_SHEET_ID = "${{ secrets.GOOGLE_SHEET_ID }}"
+        EOF
+        
+        # Debug: show first 100 chars of credentials
+        echo "DEBUG: First 100 chars of credentials:"
+        head -c 100 google_credentials.json
+        echo ""
       
     - name: Run scraper
       run: python discord_scraper_gsheets.py

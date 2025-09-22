@@ -4,12 +4,23 @@ import json
 import time
 import os
 from typing import List, Dict, Optional
-from dotenv import load_dotenv
+
+# Import configuration from config.py instead of .env
+try:
+    from config import DISCORD_TOKEN, CHANNEL_URLS, MAX_MESSAGES, GOOGLE_SHEET_ID
+    print("DEBUG: Successfully loaded configuration from config.py")
+except ImportError:
+    print("ERROR: Failed to import config.py, falling back to environment variables")
+    from dotenv import load_dotenv
+    load_dotenv()
+    DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+    CHANNEL_URLS = os.getenv("CHANNEL_URLS", "")
+    MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "100"))
+    GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+
+# Rest of your imports
 import gspread
 from google.oauth2.service_account import Credentials
-
-# Load environment variables
-load_dotenv()
 
 class DiscordScraper:
     def __init__(self, auth_token: str):
@@ -94,7 +105,9 @@ class GoogleSheetsManager:
     def __init__(self, credentials_json: str, sheet_id: str):
         try:
             print("DEBUG: Initializing Google Sheets connection...")
-            # Parse the credentials from environment variable
+            print(f"DEBUG: First 100 chars of credentials: {credentials_json[:100]}...")
+            
+            # Parse the credentials from JSON string
             creds_dict = json.loads(credentials_json)
             creds = Credentials.from_service_account_info(creds_dict)
             self.client = gspread.authorize(creds)
@@ -109,6 +122,10 @@ class GoogleSheetsManager:
             else:
                 print("DEBUG: Headers already exist in Google Sheets")
                 
+        except json.JSONDecodeError as e:
+            print(f"ERROR: Failed to parse Google credentials JSON: {e}")
+            print(f"DEBUG: Credentials content: {credentials_json}")
+            raise
         except Exception as e:
             print(f"ERROR: Failed to initialize Google Sheets: {e}")
             raise
@@ -169,38 +186,41 @@ def extract_channel_id(channel_url: str) -> str:
     return channel_url
 
 async def main():
-    # Configuration with debug info
-    AUTH_TOKEN = os.getenv("DISCORD_TOKEN")
-    CHANNEL_URLS_STR = os.getenv("CHANNEL_URLS", "")
-    CHANNEL_URLS = [url.strip() for url in CHANNEL_URLS_STR.split(",") if url.strip()]
-    MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "100"))
-    GOOGLE_CREDENTIALS = os.getenv("GOOGLE_SHEETS_CREDENTIALS")
-    SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
+    # Parse channel URLs from the config
+    CHANNEL_URLS_LIST = [url.strip() for url in CHANNEL_URLS.split(",") if url.strip()]
     
     print("=" * 50)
     print("DEBUG: Starting Discord Scraper")
     print("=" * 50)
-    print(f"DEBUG: AUTH_TOKEN exists: {AUTH_TOKEN is not None}")
-    print(f"DEBUG: CHANNEL_URLS: {CHANNEL_URLS}")
+    print(f"DEBUG: AUTH_TOKEN exists: {DISCORD_TOKEN is not None}")
+    print(f"DEBUG: CHANNEL_URLS: {CHANNEL_URLS_LIST}")
     print(f"DEBUG: MAX_MESSAGES: {MAX_MESSAGES}")
-    print(f"DEBUG: GOOGLE_CREDENTIALS exists: {GOOGLE_CREDENTIALS is not None}")
-    print(f"DEBUG: SHEET_ID: {SHEET_ID}")
+    print(f"DEBUG: GOOGLE_SHEET_ID: {GOOGLE_SHEET_ID}")
     
-    # Validate required environment variables
-    if not AUTH_TOKEN:
-        print("ERROR: DISCORD_TOKEN environment variable not set")
+    # Read Google credentials from file
+    try:
+        with open('google_credentials.json', 'r') as f:
+            GOOGLE_CREDENTIALS = f.read().strip()
+        print(f"DEBUG: GOOGLE_CREDENTIALS loaded from file: {GOOGLE_CREDENTIALS[:100]}...")
+    except Exception as e:
+        print(f"ERROR: Failed to read google_credentials.json: {e}")
+        return
+    
+    # Validate required configuration
+    if not DISCORD_TOKEN:
+        print("ERROR: DISCORD_TOKEN not set")
         return
         
-    if not CHANNEL_URLS:
-        print("ERROR: CHANNEL_URLS environment variable not set or empty")
+    if not CHANNEL_URLS_LIST:
+        print("ERROR: CHANNEL_URLS not set or empty")
         return
         
     if not GOOGLE_CREDENTIALS:
-        print("ERROR: GOOGLE_SHEETS_CREDENTIALS environment variable not set")
+        print("ERROR: GOOGLE_CREDENTIALS not loaded")
         return
         
-    if not SHEET_ID:
-        print("ERROR: GOOGLE_SHEET_ID environment variable not set")
+    if not GOOGLE_SHEET_ID:
+        print("ERROR: GOOGLE_SHEET_ID not set")
         return
     
     # Tutoring keywords to search for
@@ -217,11 +237,11 @@ async def main():
     print(f"DEBUG: Searching for keywords: {TUTORING_KEYWORDS}")
     
     # Initialize components
-    scraper = DiscordScraper(AUTH_TOKEN)
+    scraper = DiscordScraper(DISCORD_TOKEN)
     keyword_filter = KeywordFilter(TUTORING_KEYWORDS)
     
     try:
-        sheets_manager = GoogleSheetsManager(GOOGLE_CREDENTIALS, SHEET_ID)
+        sheets_manager = GoogleSheetsManager(GOOGLE_CREDENTIALS, GOOGLE_SHEET_ID)
     except Exception as e:
         print(f"ERROR: Failed to initialize Google Sheets manager: {e}")
         return
@@ -230,7 +250,7 @@ async def main():
     total_messages_processed = 0
     
     # Process each channel
-    for channel_url in CHANNEL_URLS:
+    for channel_url in CHANNEL_URLS_LIST:
         channel_id = extract_channel_id(channel_url)
         print(f"\nDEBUG: Scraping channel {channel_id}...")
         
