@@ -19,20 +19,15 @@ jobs:
         python-version: '3.10'
         
     - name: Install dependencies
-      run: pip install aiohttp python-dotenv
+      run: pip install aiohttp python-dotenv gspread google-auth
       
     - name: Create .env file from secrets
       run: |
         echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" >> .env
         echo "CHANNEL_URLS=${{ secrets.CHANNEL_URLS }}" >> .env
         echo "MAX_MESSAGES=500" >> .env
+        echo "GOOGLE_SHEETS_CREDENTIALS=${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}" >> .env
+        echo "GOOGLE_SHEET_ID=${{ secrets.GOOGLE_SHEET_ID }}" >> .env
       
-    - name: Run scraper
-      run: python discord_scraper.py
-      
-    - name: Upload results
-      uses: actions/upload-artifact@v4
-      with:
-        name: discord-messages
-        path: discord_messages.json
-        retention-days: 7  # Keep artifacts for 7 days
+    - name: Run scraper with Google Sheets integration
+      run: python discord_scraper_gsheets.py
