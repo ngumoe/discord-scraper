@@ -23,11 +23,13 @@ jobs:
       
     - name: Create .env file from secrets
       run: |
-        echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" >> .env
+        echo "DISCORD_TOKEN=${{ secrets.DISCORD_TOKEN }}" > .env
         echo "CHANNEL_URLS=${{ secrets.CHANNEL_URLS }}" >> .env
         echo "MAX_MESSAGES=500" >> .env
-        echo "GOOGLE_SHEETS_CREDENTIALS=${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}" >> .env
         echo "GOOGLE_SHEET_ID=${{ secrets.GOOGLE_SHEET_ID }}" >> .env
+        # Create a separate file for Google credentials (not in .env)
+        echo '${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}' > google_credentials.json
+        cat google_credentials.json | head -c 100  # Debug: show first 100 chars
       
-    - name: Run scraper with Google Sheets integration
+    - name: Run scraper
       run: python discord_scraper_gsheets.py
