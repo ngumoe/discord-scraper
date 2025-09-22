@@ -111,9 +111,13 @@ class GoogleSheetsManager:
             
             print(f"DEBUG: First 100 chars of credentials: {credentials_json[:100]}...")
             
-            # Parse the credentials from JSON string
+            # Parse the credentials from JSON string with explicit scopes
             creds_dict = json.loads(credentials_json)
-            creds = Credentials.from_service_account_info(creds_dict)
+            
+            # Explicitly define the required scopes
+            SCOPES = ['https://www.googleapis.com/auth/spreadsheets']
+            
+            creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
             self.client = gspread.authorize(creds)
             self.sheet = self.client.open_by_key(sheet_id).sheet1
             print("DEBUG: Successfully connected to Google Sheets")
@@ -128,6 +132,8 @@ class GoogleSheetsManager:
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse Google credentials JSON: {e}")
+            # Print the actual JSON content for debugging (be careful with secrets)
+            print("DEBUG: Credentials content (first 200 chars):", credentials_json[:200])
             raise
         except Exception as e:
             print(f"ERROR: Failed to initialize Google Sheets: {e}")
