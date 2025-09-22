@@ -4,23 +4,22 @@ import json
 import time
 import os
 from typing import List, Dict, Optional
-
-# Import configuration from config.py instead of .env
-try:
-    from config import DISCORD_TOKEN, CHANNEL_URLS, MAX_MESSAGES, GOOGLE_SHEET_ID
-    print("DEBUG: Successfully loaded configuration from config.py")
-except ImportError:
-    print("ERROR: Failed to import config.py, falling back to environment variables")
-    from dotenv import load_dotenv
-    load_dotenv()
-    DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-    CHANNEL_URLS = os.getenv("CHANNEL_URLS", "")
-    MAX_MESSAGES = int(os.getenv("MAX_MESSAGES", "100"))
-    GOOGLE_SHEET_ID = os.getenv("GOOGLE_SHEET_ID")
-
-# Rest of your imports
 import gspread
 from google.oauth2.service_account import Credentials
+
+# Read configuration from environment variables
+DISCORD_TOKEN = os.environ.get("DISCORD_TOKEN")
+CHANNEL_URLS_STR = os.environ.get("CHANNEL_URLS", "")
+MAX_MESSAGES = int(os.environ.get("MAX_MESSAGES", "100"))
+GOOGLE_SHEET_ID = os.environ.get("GOOGLE_SHEET_ID")
+
+print("=" * 50)
+print("DEBUG: Starting Discord Scraper")
+print("=" * 50)
+print(f"DEBUG: DISCORD_TOKEN exists: {DISCORD_TOKEN is not None}")
+print(f"DEBUG: CHANNEL_URLS_STR: {CHANNEL_URLS_STR[:100]}...")
+print(f"DEBUG: MAX_MESSAGES: {MAX_MESSAGES}")
+print(f"DEBUG: GOOGLE_SHEET_ID exists: {GOOGLE_SHEET_ID is not None}")
 
 class DiscordScraper:
     def __init__(self, auth_token: str):
@@ -102,9 +101,14 @@ class KeywordFilter:
         return filtered_messages
 
 class GoogleSheetsManager:
-    def __init__(self, credentials_json: str, sheet_id: str):
+    def __init__(self, sheet_id: str):
         try:
             print("DEBUG: Initializing Google Sheets connection...")
+            
+            # Read credentials from file
+            with open('google_credentials.json', 'r') as f:
+                credentials_json = f.read().strip()
+            
             print(f"DEBUG: First 100 chars of credentials: {credentials_json[:100]}...")
             
             # Parse the credentials from JSON string
@@ -124,7 +128,6 @@ class GoogleSheetsManager:
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse Google credentials JSON: {e}")
-            print(f"DEBUG: Credentials content: {credentials_json}")
             raise
         except Exception as e:
             print(f"ERROR: Failed to initialize Google Sheets: {e}")
@@ -133,7 +136,6 @@ class GoogleSheetsManager:
     def message_exists(self, message_id: str) -> bool:
         """Check if a message already exists in the sheet"""
         try:
-            # Search for message ID in column A
             cell = self.sheet.find(message_id, in_column=1)
             exists = cell is not None
             if exists:
@@ -153,23 +155,20 @@ class GoogleSheetsManager:
                 print("ERROR: Message has no ID")
                 return False
             
-            # Check if message already exists
             if self.message_exists(message_id):
                 print(f"DEBUG: Message {message_id} already exists, skipping")
                 return False
             
-            # Prepare row data
             row = [
                 message_id,
                 message.get("timestamp", ""),
                 message.get("author", {}).get("username", "Unknown"),
-                message.get("content", "")[:500],  # Limit content length
+                message.get("content", "")[:500],
                 ", ".join(message.get("matched_keywords", [])),
                 message.get("channel_id", ""),
-                f"{message_id}_{message.get('channel_id', '')}"  # Unique hash
+                f"{message_id}_{message.get('channel_id', '')}"
             ]
             
-            # Add to sheet
             self.sheet.append_row(row)
             print(f"DEBUG: Added new message to sheet: {message_id}")
             return True
@@ -186,52 +185,24 @@ def extract_channel_id(channel_url: str) -> str:
     return channel_url
 
 async def main():
-    # Parse channel URLs from the config
-    CHANNEL_URLS_LIST = [url.strip() for url in CHANNEL_URLS.split(",") if url.strip()]
+    # Parse channel URLs
+    CHANNEL_URLS_LIST = [url.strip() for url in CHANNEL_URLS_STR.split(",") if url.strip()]
     
-    print("=" * 50)
-    print("DEBUG: Starting Discord Scraper")
-    print("=" * 50)
-    print(f"DEBUG: AUTH_TOKEN exists: {DISCORD_TOKEN is not None}")
-    print(f"DEBUG: CHANNEL_URLS: {CHANNEL_URLS_LIST}")
-    print(f"DEBUG: MAX_MESSAGES: {MAX_MESSAGES}")
-    print(f"DEBUG: GOOGLE_SHEET_ID: {GOOGLE_SHEET_ID}")
+    print(f"DEBUG: Parsed {len(CHANNEL_URLS_LIST)} channel URLs")
     
-    # Read Google credentials from file
-    try:
-        with open('google_credentials.json', 'r') as f:
-            GOOGLE_CREDENTIALS = f.read().strip()
-        print(f"DEBUG: GOOGLE_CREDENTIALS loaded from file: {GOOGLE_CREDENTIALS[:100]}...")
-    except Exception as e:
-        print(f"ERROR: Failed to read google_credentials.json: {e}")
+    # Validate configuration
+    if not all([DISCORD_TOKEN, CHANNEL_URLS_LIST, GOOGLE_SHEET_ID]):
+        missing = []
+        if not DISCORD_TOKEN: missing.append("DISCORD_TOKEN")
+        if not CHANNEL_URLS_LIST: missing.append("CHANNEL_URLS")
+        if not GOOGLE_SHEET_ID: missing.append("GOOGLE_SHEET_ID")
+        print(f"ERROR: Missing configuration: {missing}")
         return
     
-    # Validate required configuration
-    if not DISCORD_TOKEN:
-        print("ERROR: DISCORD_TOKEN not set")
-        return
-        
-    if not CHANNEL_URLS_LIST:
-        print("ERROR: CHANNEL_URLS not set or empty")
-        return
-        
-    if not GOOGLE_CREDENTIALS:
-        print("ERROR: GOOGLE_CREDENTIALS not loaded")
-        return
-        
-    if not GOOGLE_SHEET_ID:
-        print("ERROR: GOOGLE_SHEET_ID not set")
-        return
-    
-    # Tutoring keywords to search for
+    # Tutoring keywords
     TUTORING_KEYWORDS = [
-        "due tonight",
-        "urgent",
-        "deadline", 
-        "exam tomorrow",
-        "stuck on",
-        "need help asap",
-        "failing"
+        "due tonight", "urgent", "deadline", "exam tomorrow", 
+        "stuck on", "need help asap", "failing"
     ]
     
     print(f"DEBUG: Searching for keywords: {TUTORING_KEYWORDS}")
@@ -241,9 +212,9 @@ async def main():
     keyword_filter = KeywordFilter(TUTORING_KEYWORDS)
     
     try:
-        sheets_manager = GoogleSheetsManager(GOOGLE_CREDENTIALS, GOOGLE_SHEET_ID)
+        sheets_manager = GoogleSheetsManager(GOOGLE_SHEET_ID)
     except Exception as e:
-        print(f"ERROR: Failed to initialize Google Sheets manager: {e}")
+        print(f"ERROR: Failed to initialize Google Sheets: {e}")
         return
     
     new_messages_count = 0
@@ -256,13 +227,12 @@ async def main():
         
         try:
             messages = await scraper.fetch_messages(channel_id, MAX_MESSAGES)
-            print(f"DEBUG: Fetched {len(messages)} total messages from channel {channel_id}")
+            print(f"DEBUG: Fetched {len(messages)} total messages")
             
             filtered_messages = keyword_filter.filter_messages(messages)
-            print(f"DEBUG: Found {len(filtered_messages)} messages with keywords in channel {channel_id}")
+            print(f"DEBUG: Found {len(filtered_messages)} messages with keywords")
             total_messages_processed += len(filtered_messages)
             
-            # Add new messages to Google Sheets
             for message in filtered_messages:
                 if sheets_manager.add_message(message):
                     new_messages_count += 1
@@ -271,8 +241,6 @@ async def main():
             print(f"ERROR processing channel {channel_id}: {e}")
     
     print("\n" + "=" * 50)
-    print("DEBUG: Scraping complete")
-    print(f"DEBUG: Processed {total_messages_processed} total messages with keywords")
     print(f"DEBUG: Added {new_messages_count} new messages to Google Sheets")
     print("=" * 50)
 

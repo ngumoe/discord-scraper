@@ -19,25 +19,23 @@ jobs:
         python-version: '3.10'
         
     - name: Install dependencies
-      run: pip install aiohttp python-dotenv gspread google-auth
+      run: pip install aiohttp gspread google-auth
       
-    - name: Create configuration files
+    - name: Create google_credentials.json
       run: |
-        # Create google_credentials.json from secret
-        echo '${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}' > google_credentials.json
-        
-        # Create a simple config.py file instead of .env
-        cat > config.py << EOF
-        DISCORD_TOKEN = "${{ secrets.DISCORD_TOKEN }}"
-        CHANNEL_URLS = "${{ secrets.CHANNEL_URLS }}"
-        MAX_MESSAGES = 500
-        GOOGLE_SHEET_ID = "${{ secrets.GOOGLE_SHEET_ID }}"
+        # Create the credentials file directly from the secret
+        cat << 'EOF' > google_credentials.json
+        ${{ secrets.GOOGLE_SHEETS_CREDENTIALS }}
         EOF
         
-        # Debug: show first 100 chars of credentials
-        echo "DEBUG: First 100 chars of credentials:"
-        head -c 100 google_credentials.json
-        echo ""
+        # Debug: check if file was created
+        echo "DEBUG: google_credentials.json created successfully"
+        ls -la google_credentials.json
       
     - name: Run scraper
+      env:
+        DISCORD_TOKEN: ${{ secrets.DISCORD_TOKEN }}
+        CHANNEL_URLS: ${{ secrets.CHANNEL_URLS }}
+        MAX_MESSAGES: 500
+        GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
       run: python discord_scraper_gsheets.py
