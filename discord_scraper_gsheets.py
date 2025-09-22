@@ -208,7 +208,7 @@ async def main():
     # Tutoring keywords
     TUTORING_KEYWORDS = [
         "due tonight", "urgent", "deadline", "exam tomorrow", 
-        "stuck on", "need help asap", "failing"
+        "stuck on", "assignment", "homework", "GIS tutor", "need help", "automation", "automation expert", "hiring", "remote", "need help asap", "failing"
     ]
     
     print(f"DEBUG: Searching for keywords: {TUTORING_KEYWORDS}")
