@@ -122,17 +122,22 @@ class GoogleSheetsManager:
             self.sheet = self.client.open_by_key(sheet_id).sheet1
             print("DEBUG: Successfully connected to Google Sheets")
             
-            # Ensure headers exist with NEW COLUMNS for server/channel info
-            if not self.sheet.get_all_records():
-                headers = [
-                    "Message ID", "Timestamp", "Author", "Content", "Keywords", 
-                    "Channel ID", "Server ID", "Channel Name", "Server Name",
-                    "Response Status", "Response Sent", "Response Content"
-                ]
+            # Ensure headers exist - USING YOUR ORIGINAL APPROACH
+            try:
+                # This is your original working approach
+                records = self.sheet.get_all_records()
+                if not records:
+                    headers = ["Message ID", "Timestamp", "Author", "Content", "Keywords", "Channel ID", "Server Name", "Channel Name"]
+                    self.sheet.append_row(headers)
+                    print("DEBUG: Added headers to Google Sheets")
+                else:
+                    print("DEBUG: Headers already exist in Google Sheets")
+            except Exception as e:
+                print(f"DEBUG: Error checking records, but continuing: {e}")
+                # If there's an error, try to add headers anyway
+                headers = ["Message ID", "Timestamp", "Author", "Content", "Keywords", "Channel ID", "Server Name", "Channel Name"]
                 self.sheet.append_row(headers)
-                print("DEBUG: Added headers to Google Sheets")
-            else:
-                print("DEBUG: Headers already exist in Google Sheets - NEW MESSAGES WILL HAVE EXTRA COLUMNS")
+                print("DEBUG: Added headers to Google Sheets after error")
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse Google credentials JSON: {e}")
@@ -145,13 +150,11 @@ class GoogleSheetsManager:
     def message_exists(self, message_id: str) -> bool:
         """Check if a message already exists in the sheet"""
         try:
-            # find() returns None if not found, doesn't raise an exception
+            # Your original working approach - find returns None if not found
             cell = self.sheet.find(message_id, in_column=1)
             exists = cell is not None
             if exists:
                 print(f"DEBUG: Message {message_id} already exists in sheet")
-            else:
-                print(f"DEBUG: Message {message_id} not found in sheet")
             return exists
         except Exception as e:
             print(f"ERROR checking if message exists: {e}")
@@ -169,10 +172,10 @@ class GoogleSheetsManager:
                 print(f"DEBUG: Message {message_id} already exists, skipping")
                 return False
             
-            # NEW: Extract server ID from guild_id or use 'DM' for direct messages
-            guild_id = message.get('guild_id', 'DM')
+            # Use channel_info if available, otherwise use defaults
+            server_name = channel_info.get('guild_name', 'Unknown') if channel_info else 'Unknown'
+            channel_name = channel_info.get('name', 'Unknown') if channel_info else 'Unknown'
             
-            # NEW: Prepare row data with server/channel info
             row = [
                 message_id,
                 message.get("timestamp", ""),
@@ -180,12 +183,8 @@ class GoogleSheetsManager:
                 message.get("content", "")[:500],
                 ", ".join(message.get("matched_keywords", [])),
                 message.get("channel_id", ""),
-                guild_id,  # NEW: Server ID
-                channel_info.get('name', 'Unknown') if channel_info else 'Unknown',  # NEW: Channel name
-                channel_info.get('guild_name', 'DM') if channel_info else 'DM',  # NEW: Server name
-                "Pending",  # NEW: Response Status
-                "",  # NEW: Response Sent timestamp
-                ""   # NEW: Response Content
+                server_name,  # Added server name
+                channel_name  # Added channel name
             ]
             
             self.sheet.append_row(row)
@@ -196,7 +195,7 @@ class GoogleSheetsManager:
             print(f"ERROR adding message to sheet: {e}")
             return False
 
-# NEW FUNCTION: Get channel and server information
+# Function to get channel and server information
 async def get_channel_info(channel_id: str, auth_token: str) -> Dict:
     """Get channel and server information"""
     url = f"https://discord.com/api/v9/channels/{channel_id}"
@@ -276,7 +275,7 @@ async def main():
         print(f"\nDEBUG: Scraping channel {channel_id}...")
         
         try:
-            # NEW: Get channel info first
+            # Get channel info first
             channel_info = await get_channel_info(channel_id, DISCORD_TOKEN)
             print(f"DEBUG: Channel: {channel_info.get('name')}, Server: {channel_info.get('guild_name')}")
             
@@ -287,7 +286,7 @@ async def main():
             print(f"DEBUG: Found {len(filtered_messages)} messages with keywords")
             total_messages_processed += len(filtered_messages)
             
-            # NEW: Pass channel_info to add_message
+            # Pass channel_info to add_message
             for message in filtered_messages:
                 if sheets_manager.add_message(message, channel_info):
                     new_messages_count += 1
