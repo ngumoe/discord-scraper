@@ -3,7 +3,7 @@ import asyncio
 import json
 import time
 import os
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 import gspread
 from google.oauth2.service_account import Credentials
 
@@ -122,9 +122,9 @@ class GoogleSheetsManager:
             self.sheet = self.client.open_by_key(sheet_id).sheet1
             print("DEBUG: Successfully connected to Google Sheets")
             
-            # Use your original working approach - don't check for records
-            # Just assume headers exist since your workflow was successful
-            print("DEBUG: Assuming headers already exist (as per successful previous runs)")
+            # Load all existing message IDs once to avoid multiple API calls
+            self.existing_message_ids = self._load_existing_message_ids()
+            print(f"DEBUG: Loaded {len(self.existing_message_ids)} existing message IDs from sheet")
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse Google credentials JSON: {e}")
@@ -134,18 +134,27 @@ class GoogleSheetsManager:
             print(f"ERROR: Failed to initialize Google Sheets: {e}")
             raise
     
-    def message_exists(self, message_id: str) -> bool:
-        """Check if a message already exists in the sheet"""
+    def _load_existing_message_ids(self) -> Set[str]:
+        """Load all existing message IDs from the sheet with one API call"""
         try:
-            # Your original working approach - find returns None if not found
-            cell = self.sheet.find(message_id, in_column=1)
-            exists = cell is not None
-            if exists:
-                print(f"DEBUG: Message {message_id} already exists in sheet")
-            return exists
+            # Get all values from column A (Message IDs)
+            message_id_column = self.sheet.col_values(1)  # Column A
+            # Skip header if it exists and remove empty strings
+            existing_ids = set()
+            for msg_id in message_id_column:
+                if msg_id and msg_id.strip() and msg_id != "Message ID":
+                    existing_ids.add(msg_id.strip())
+            return existing_ids
         except Exception as e:
-            print(f"ERROR checking if message exists: {e}")
-            return False
+            print(f"WARNING: Could not load existing message IDs: {e}")
+            return set()
+    
+    def message_exists(self, message_id: str) -> bool:
+        """Check if a message already exists in the sheet (local check)"""
+        exists = message_id in self.existing_message_ids
+        if exists:
+            print(f"DEBUG: Message {message_id} already exists in sheet")
+        return exists
     
     def add_message(self, message: Dict, channel_info: Dict = None):
         """Add a new message to the sheet if it doesn't exist"""
@@ -160,7 +169,6 @@ class GoogleSheetsManager:
                 return False
             
             # Use your original row structure but add server/channel info at the end
-            # This maintains compatibility with your existing sheet
             row = [
                 message_id,
                 message.get("timestamp", ""),
@@ -174,6 +182,8 @@ class GoogleSheetsManager:
             ]
             
             self.sheet.append_row(row)
+            # Add to our local cache to avoid checking again
+            self.existing_message_ids.add(message_id)
             print(f"DEBUG: Added new message to sheet: {message_id}")
             return True
             
