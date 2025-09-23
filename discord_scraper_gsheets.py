@@ -145,13 +145,14 @@ class GoogleSheetsManager:
     def message_exists(self, message_id: str) -> bool:
         """Check if a message already exists in the sheet"""
         try:
+            # find() returns None if not found, doesn't raise an exception
             cell = self.sheet.find(message_id, in_column=1)
             exists = cell is not None
             if exists:
                 print(f"DEBUG: Message {message_id} already exists in sheet")
+            else:
+                print(f"DEBUG: Message {message_id} not found in sheet")
             return exists
-        except gspread.exceptions.CellNotFound:
-            return False
         except Exception as e:
             print(f"ERROR checking if message exists: {e}")
             return False
