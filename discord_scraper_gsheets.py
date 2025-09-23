@@ -122,17 +122,20 @@ class GoogleSheetsManager:
             self.sheet = self.client.open_by_key(sheet_id).sheet1
             print("DEBUG: Successfully connected to Google Sheets")
             
-            # Ensure headers exist
+            # Ensure headers exist with NEW COLUMNS for server/channel info
             if not self.sheet.get_all_records():
-                headers = ["Message ID", "Timestamp", "Author", "Content", "Keywords", "Channel ID", "Unique Hash"]
+                headers = [
+                    "Message ID", "Timestamp", "Author", "Content", "Keywords", 
+                    "Channel ID", "Server ID", "Channel Name", "Server Name",
+                    "Response Status", "Response Sent", "Response Content"
+                ]
                 self.sheet.append_row(headers)
                 print("DEBUG: Added headers to Google Sheets")
             else:
-                print("DEBUG: Headers already exist in Google Sheets")
+                print("DEBUG: Headers already exist in Google Sheets - NEW MESSAGES WILL HAVE EXTRA COLUMNS")
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse Google credentials JSON: {e}")
-            # Print the actual JSON content for debugging (be careful with secrets)
             print("DEBUG: Credentials content (first 200 chars):", credentials_json[:200])
             raise
         except Exception as e:
@@ -153,7 +156,7 @@ class GoogleSheetsManager:
             print(f"ERROR checking if message exists: {e}")
             return False
     
-    def add_message(self, message: Dict):
+    def add_message(self, message: Dict, channel_info: Dict = None):
         """Add a new message to the sheet if it doesn't exist"""
         try:
             message_id = message.get("id")
@@ -165,6 +168,10 @@ class GoogleSheetsManager:
                 print(f"DEBUG: Message {message_id} already exists, skipping")
                 return False
             
+            # NEW: Extract server ID from guild_id or use 'DM' for direct messages
+            guild_id = message.get('guild_id', 'DM')
+            
+            # NEW: Prepare row data with server/channel info
             row = [
                 message_id,
                 message.get("timestamp", ""),
@@ -172,7 +179,12 @@ class GoogleSheetsManager:
                 message.get("content", "")[:500],
                 ", ".join(message.get("matched_keywords", [])),
                 message.get("channel_id", ""),
-                f"{message_id}_{message.get('channel_id', '')}"
+                guild_id,  # NEW: Server ID
+                channel_info.get('name', 'Unknown') if channel_info else 'Unknown',  # NEW: Channel name
+                channel_info.get('guild_name', 'DM') if channel_info else 'DM',  # NEW: Server name
+                "Pending",  # NEW: Response Status
+                "",  # NEW: Response Sent timestamp
+                ""   # NEW: Response Content
             ]
             
             self.sheet.append_row(row)
@@ -182,6 +194,37 @@ class GoogleSheetsManager:
         except Exception as e:
             print(f"ERROR adding message to sheet: {e}")
             return False
+
+# NEW FUNCTION: Get channel and server information
+async def get_channel_info(channel_id: str, auth_token: str) -> Dict:
+    """Get channel and server information"""
+    url = f"https://discord.com/api/v9/channels/{channel_id}"
+    headers = {"Authorization": auth_token}
+    
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url, headers=headers) as response:
+            if response.status == 200:
+                channel_data = await response.json()
+                info = {
+                    'name': channel_data.get('name', 'Unknown'),
+                    'guild_id': channel_data.get('guild_id', 'DM')
+                }
+                
+                # If it's a guild channel, get server name
+                if info['guild_id'] != 'DM':
+                    guild_url = f"https://discord.com/api/v9/guilds/{info['guild_id']}"
+                    async with session.get(guild_url, headers=headers) as guild_response:
+                        if guild_response.status == 200:
+                            guild_data = await guild_response.json()
+                            info['guild_name'] = guild_data.get('name', 'Unknown')
+                        else:
+                            info['guild_name'] = 'Unknown'
+                else:
+                    info['guild_name'] = 'DM'
+                
+                return info
+            else:
+                return {'name': 'Unknown', 'guild_name': 'Unknown', 'guild_id': 'DM'}
 
 def extract_channel_id(channel_url: str) -> str:
     """Extracts channel ID from Discord URL"""
@@ -232,6 +275,10 @@ async def main():
         print(f"\nDEBUG: Scraping channel {channel_id}...")
         
         try:
+            # NEW: Get channel info first
+            channel_info = await get_channel_info(channel_id, DISCORD_TOKEN)
+            print(f"DEBUG: Channel: {channel_info.get('name')}, Server: {channel_info.get('guild_name')}")
+            
             messages = await scraper.fetch_messages(channel_id, MAX_MESSAGES)
             print(f"DEBUG: Fetched {len(messages)} total messages")
             
@@ -239,8 +286,9 @@ async def main():
             print(f"DEBUG: Found {len(filtered_messages)} messages with keywords")
             total_messages_processed += len(filtered_messages)
             
+            # NEW: Pass channel_info to add_message
             for message in filtered_messages:
-                if sheets_manager.add_message(message):
+                if sheets_manager.add_message(message, channel_info):
                     new_messages_count += 1
             
         except Exception as e:
