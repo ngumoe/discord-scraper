@@ -122,22 +122,9 @@ class GoogleSheetsManager:
             self.sheet = self.client.open_by_key(sheet_id).sheet1
             print("DEBUG: Successfully connected to Google Sheets")
             
-            # Ensure headers exist - USING YOUR ORIGINAL APPROACH
-            try:
-                # This is your original working approach
-                records = self.sheet.get_all_records()
-                if not records:
-                    headers = ["Message ID", "Timestamp", "Author", "Content", "Keywords", "Channel ID", "Server Name", "Channel Name"]
-                    self.sheet.append_row(headers)
-                    print("DEBUG: Added headers to Google Sheets")
-                else:
-                    print("DEBUG: Headers already exist in Google Sheets")
-            except Exception as e:
-                print(f"DEBUG: Error checking records, but continuing: {e}")
-                # If there's an error, try to add headers anyway
-                headers = ["Message ID", "Timestamp", "Author", "Content", "Keywords", "Channel ID", "Server Name", "Channel Name"]
-                self.sheet.append_row(headers)
-                print("DEBUG: Added headers to Google Sheets after error")
+            # Use your original working approach - don't check for records
+            # Just assume headers exist since your workflow was successful
+            print("DEBUG: Assuming headers already exist (as per successful previous runs)")
                 
         except json.JSONDecodeError as e:
             print(f"ERROR: Failed to parse Google credentials JSON: {e}")
@@ -172,10 +159,8 @@ class GoogleSheetsManager:
                 print(f"DEBUG: Message {message_id} already exists, skipping")
                 return False
             
-            # Use channel_info if available, otherwise use defaults
-            server_name = channel_info.get('guild_name', 'Unknown') if channel_info else 'Unknown'
-            channel_name = channel_info.get('name', 'Unknown') if channel_info else 'Unknown'
-            
+            # Use your original row structure but add server/channel info at the end
+            # This maintains compatibility with your existing sheet
             row = [
                 message_id,
                 message.get("timestamp", ""),
@@ -183,8 +168,9 @@ class GoogleSheetsManager:
                 message.get("content", "")[:500],
                 ", ".join(message.get("matched_keywords", [])),
                 message.get("channel_id", ""),
-                server_name,  # Added server name
-                channel_name  # Added channel name
+                # Add the new fields at the end to maintain compatibility
+                channel_info.get('guild_name', 'Unknown') if channel_info else 'Unknown',  # Server name
+                channel_info.get('name', 'Unknown') if channel_info else 'Unknown'  # Channel name
             ]
             
             self.sheet.append_row(row)
